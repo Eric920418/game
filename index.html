@@ -1,0 +1,2686 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>遊戲</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <style>
+        /* 移除所有邊距和留白，讓遊戲佔滿整個視窗 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* 防止滾動條出現 */
+            background-color: #000; /* 設置黑色背景 */
+        }
+        
+        canvas {
+            display: block;
+            width: 100vw !important; /* 強制佔滿視窗寬度 */
+            height: 100vh !important; /* 強制佔滿視窗高度 */
+            object-fit: cover; /* 保持比例並填滿容器 */
+        }
+    </style>
+</head>
+<body>
+<script>
+// --- 大廳場景 LobbyScene ---
+class LobbyScene extends Phaser.Scene {
+    constructor() {
+        super({ key: 'LobbyScene' });
+    }
+
+    preload() {
+        // 可預先載入背景圖等資源，避免切換時閃爍
+        this.load.image('background', '初始背景.png');
+        
+        // 載入背景音樂
+        this.load.audio('bgMusic', 'videoplayback.webm');
+        
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        // 顯示載入進度
+        let loadingText = this.add.text(gameWidth/2, gameHeight/2, '載入中...', {
+            fontSize: '32px',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        // 添加載入進度處理
+        this.load.on('progress', (value) => {
+            loadingText.setText(`載入中: ${Math.floor(value * 100)}%`);
+        });
+        
+        // 添加載入完成處理
+        this.load.on('complete', () => {
+            loadingText.destroy();
+            console.log('大廳場景資源載入完成');
+        });
+        
+        // 添加錯誤處理
+        this.load.on('loaderror', (fileObj) => {
+            console.error('載入失敗:', fileObj.src);
+            loadingText.setText(`載入失敗: ${fileObj.key}\n請重新整理頁面`);
+            loadingText.setFill('#ff0000');
+        });
+    }
+
+    create() {
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        // 加入背景，讓它填滿整個畫布
+        this.add.image(0, 0, 'background').setOrigin(0, 0).setDisplaySize(gameWidth, gameHeight);
+        
+        // 初始化背景音樂
+        this.bgMusic = this.sound.add('bgMusic', {
+            volume: 0.3,  // 設置音量為30%
+            loop: true    // 循環播放
+        });
+        
+        // 嘗試播放背景音樂
+        try {
+            this.bgMusic.play();
+            console.log('背景音樂開始播放');
+        } catch (error) {
+            console.warn('背景音樂播放失敗:', error);
+        }
+        
+        // 遊戲標題 - 根據畫布尺寸調整位置
+        this.add.text(gameWidth/2, gameHeight * 0.3, '我的 RPG 遊戲', { 
+            fontSize: Math.min(gameWidth, gameHeight) * 0.08 + 'px', 
+            fill: '#fff' 
+        }).setOrigin(0.5);
+        
+        // 開始按鈕 - 根據畫布尺寸調整位置和大小
+        const startBtn = this.add.text(gameWidth/2, gameHeight * 0.58, '開始遊戲', { 
+            fontSize: Math.min(gameWidth, gameHeight) * 0.06 + 'px', 
+            fill: '#00ffcc', 
+            backgroundColor: '#222', 
+            padding: { x: 30, y: 10 } 
+        })
+            .setOrigin(0.5)
+            .setInteractive({ useHandCursor: true });
+        
+        // 按下按鈕切換到 GameScene
+        startBtn.on('pointerdown', () => {
+            // 將背景音樂傳遞給遊戲場景
+            this.scene.start('GameScene', { bgMusic: this.bgMusic });
+        });
+        
+        // 添加音樂控制按鈕
+        this.createMusicControls();
+    }
+    
+    // 創建音樂控制界面
+    createMusicControls() {
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        // 音樂開關按鈕 - 響應式位置
+        this.musicToggleBtn = this.add.text(gameWidth * 0.06, gameHeight * 0.08, '🔊 音樂: 開', {
+            fontSize: Math.min(gameWidth, gameHeight) * 0.033 + 'px',
+            fill: '#ffffff',
+            backgroundColor: '#333333',
+            padding: { x: 10, y: 5 }
+        }).setOrigin(0, 0).setInteractive({ useHandCursor: true });
+        
+        this.musicToggleBtn.on('pointerdown', () => {
+            this.toggleMusic();
+        });
+        
+        // 音量控制說明
+        this.add.text(gameWidth * 0.06, gameHeight * 0.15, '音量控制: ↑/↓ 鍵', {
+            fontSize: Math.min(gameWidth, gameHeight) * 0.027 + 'px',
+            fill: '#cccccc'
+        }).setOrigin(0, 0);
+        
+        // 當前音量顯示
+        this.volumeText = this.add.text(gameWidth * 0.06, gameHeight * 0.18, `音量: ${Math.floor(this.bgMusic.volume * 100)}%`, {
+            fontSize: Math.min(gameWidth, gameHeight) * 0.027 + 'px',
+            fill: '#ffffff'
+        }).setOrigin(0, 0);
+        
+        // 添加鍵盤控制
+        this.upKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP);
+        this.downKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN);
+        this.mKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M);
+    }
+    
+    // 切換音樂開關
+    toggleMusic() {
+        if (this.bgMusic.isPlaying) {
+            this.bgMusic.pause();
+            this.musicToggleBtn.setText('🔇 音樂: 關');
+            console.log('背景音樂已暫停');
+        } else {
+            this.bgMusic.resume();
+            this.musicToggleBtn.setText('🔊 音樂: 開');
+            console.log('背景音樂已恢復');
+        }
+    }
+    
+    update() {
+        // 音量控制
+        if (Phaser.Input.Keyboard.JustDown(this.upKey)) {
+            this.adjustVolume(0.1);
+        }
+        if (Phaser.Input.Keyboard.JustDown(this.downKey)) {
+            this.adjustVolume(-0.1);
+        }
+        
+        // M鍵快速切換音樂
+        if (Phaser.Input.Keyboard.JustDown(this.mKey)) {
+            this.toggleMusic();
+        }
+    }
+    
+    // 調整音量
+    adjustVolume(change) {
+        let newVolume = this.bgMusic.volume + change;
+        newVolume = Math.max(0, Math.min(1, newVolume)); // 限制在0-1之間
+        this.bgMusic.setVolume(newVolume);
+        this.volumeText.setText(`音量: ${Math.floor(newVolume * 100)}%`);
+        console.log(`音量調整為: ${Math.floor(newVolume * 100)}%`);
+    }
+}
+
+// --- 遊戲主場景 GameScene ---
+class GameScene extends Phaser.Scene {
+    constructor() {
+        super({ key: 'GameScene' });
+        // 這裡不初始化屬性，統一在 create 內
+        this.resourcesLoaded = false; // 標記資源是否已載入完成
+        this.resourcesError = false;  // 標記載入過程中是否有錯誤
+    }
+    
+    // 接收從大廳場景傳遞的數據
+    init(data) {
+        // 接收背景音樂物件
+        this.bgMusic = data.bgMusic || null;
+        console.log('GameScene 接收到背景音樂:', this.bgMusic ? '是' : '否');
+    }
+
+    preload() {
+        // 載入所有遊戲資源
+    this.load.image('background', './初始背景.png');
+    this.load.image('wall', './牆壁.png');
+    this.load.image('door', './門.png');
+    this.load.image('chest', './寶箱.png');
+    this.load.image('energy', './能量飲料.png');
+    this.load.image('slash', './劍氣.png');
+    this.load.spritesheet('hero', './英雄.png', { frameWidth: 64, frameHeight: 64 });
+    this.load.spritesheet('slime', './史萊姆怪物.png', { frameWidth: 64, frameHeight: 64 });
+        this.load.image('boss', './大BOSS.png');  // 載入Boss圖片
+        this.load.image('skill1', './技能一.png'); // 載入技能一圖片
+        this.load.image('skill2', './技能二.png'); // 載入技能二圖片
+        
+        // 載入音效
+        this.load.audio('slashSound', './揮劍.mp3'); // 載入揮劍音效
+        this.load.audio('levelUpSound', './升級.mp3'); // 載入升級音效
+        this.load.audio('skill1Sound', './大爆炸.mp3'); // 載入技能一音效
+        this.load.audio('skill2Sound', './雷射光.mp3'); // 載入技能二音效
+        
+        // 如果沒有背景音樂，則載入音檔
+        if (!this.bgMusic) {
+            this.load.audio('bgMusic', 'videoplayback.webm');
+        }
+        
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        // 顯示載入進度
+        let loadingText = this.add.text(gameWidth/2, gameHeight/2, '載入中...', {
+            fontSize: '32px',
+            fill: '#ffffff'
+        }).setOrigin(0.5);
+        
+        // 添加載入進度處理
+        this.load.on('progress', (value) => {
+            loadingText.setText(`載入中: ${Math.floor(value * 100)}%`);
+        });
+        
+        // 添加載入完成處理
+        this.load.on('complete', () => {
+            loadingText.destroy();
+            console.log('所有資源載入完成');
+            this.resourcesLoaded = true; // 標記資源已載入完成
+        });
+        
+        // 添加錯誤處理
+        this.load.on('loaderror', (fileObj) => {
+            console.error('載入失敗:', fileObj.src);
+            loadingText.setText(`載入失敗: ${fileObj.key}\n請重新整理頁面`);
+            loadingText.setFill('#ff0000');
+            
+            // 標記載入錯誤
+            this.resourcesError = true;
+            
+            // 添加重試按鈕
+            const retryBtn = this.add.text(gameWidth/2, gameHeight * 0.67, '重新整理', { 
+                fontSize: '28px', 
+                fill: '#ffffff',
+                backgroundColor: '#550000',
+                padding: { x: 20, y: 10 }
+            }).setOrigin(0.5).setInteractive();
+            
+            retryBtn.on('pointerdown', () => {
+                // 重新載入頁面
+                location.reload();
+            });
+        });
+    }
+
+    create() {
+        // 檢查資源是否成功加載
+        if (this.resourcesError) {
+            // 如果有載入錯誤，不初始化遊戲
+            return;
+        }
+        
+        // 確保資源已完全載入
+        if (!this.resourcesLoaded) {
+            console.warn('資源尚未完全載入，等待中...');
+            // 延遲 100ms 後再次檢查
+            setTimeout(() => this.create(), 100);
+            return;
+        }
+        
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        // 初始化背景音樂（如果沒有從大廳場景傳遞過來）
+        if (!this.bgMusic) {
+            this.bgMusic = this.sound.add('bgMusic', {
+                volume: 0.3,
+                loop: true
+            });
+            
+            try {
+                this.bgMusic.play();
+                console.log('遊戲場景背景音樂開始播放');
+            } catch (error) {
+                console.warn('背景音樂播放失敗:', error);
+            }
+        } else {
+            // 確保音樂繼續播放
+            if (!this.bgMusic.isPlaying) {
+                try {
+                    this.bgMusic.resume();
+                    console.log('繼續播放背景音樂');
+                } catch (error) {
+                    console.warn('恢復背景音樂播放失敗:', error);
+                }
+            }
+        }
+        
+        // 記錄遊戲開始時間
+        this.gameStartTime = Date.now();
+        
+        // --- 房間地圖與座標 ---
+        this.mapSize = 5; // 5x5 地圖
+        this.roomMap = [];
+        for (let y = 0; y < this.mapSize; y++) {
+            this.roomMap[y] = [];
+            for (let x = 0; x < this.mapSize; x++) {
+                this.roomMap[y][x] = { visited: false };
+            }
+        }
+        this.roomX = 2; // 玩家起始房間座標（中央）
+        this.roomY = 2;
+        this.roomMap[this.roomY][this.roomX].visited = true;
+        
+        // --- Boss 房間設定 --- 
+        this.bossRoomX = 4; // Boss在右下角的房間 (4,4)
+        this.bossRoomY = 4;
+        this.bossDefeated = false; // 記錄Boss是否已被擊敗
+        this.hasBossSpawned = false; // 記錄Boss是否已生成
+        
+        // --- 小地圖繪製物件 ---
+        this.miniMap = this.add.graphics();
+        // --- 其餘初始化 ---
+        this.playerHealth = 100;
+        this.lastSlimeAttackTime = 0;
+        this.isGameOver = false;
+        this.slimeHealth = 100;
+        this.facing = 'down';
+        this.failText = null;
+        this.restartBtn = null;
+        // 初始化房間切換狀態
+        this.isChangingRoom = false;
+        // 初始化角色升級系統
+        this.playerLevel = 1;
+        this.playerExp = 0;
+        this.expToNextLevel = 100; // 升級所需經驗值
+        // 初始化玩家攻擊力
+        this.playerAttack = 20;
+        // 記錄當前可互動的門
+        this.currentDoor = null;
+        // 初始化技能系統
+        this.hasSkill1 = false; // 是否已解鎖技能一
+        this.hasSkill2 = false; // 是否已解鎖技能二
+        this.skill1Cooldown = 0; // 技能一冷卻時間（毫秒）
+        this.skill2Cooldown = 0; // 技能二冷卻時間（毫秒）
+        this.lastSkill1Time = 0; // 上次使用技能一的時間
+        this.lastSkill2Time = 0; // 上次使用技能二的時間
+
+        // 確保初始化怪物組
+        this.slimes = this.physics.add.group();
+        // 初始化技能效果組
+        this.skillEffects = this.physics.add.group();
+        
+        // --- 場景物件建立 ---
+        this.add.image(0, 0, 'background').setOrigin(0, 0).setDisplaySize(gameWidth, gameHeight);
+        // 牆壁 - 根據畫布尺寸調整
+        this.walls = this.physics.add.staticGroup();
+        const wallCount = Math.ceil(gameWidth / 50);
+        const wallCountVertical = Math.ceil(gameHeight / 50);
+        
+        for (let i = 0; i < wallCount; i++) {
+            this.walls.create(25 + i * 50, gameHeight - 4, 'wall').body.setSize(64, 8).setOffset(32, 60);
+            this.walls.create(25 + i * 50, 4, 'wall').setRotation(Math.PI).body.setSize(64, 8).setOffset(32, 60);
+        }
+        
+        for (let i = 0; i < wallCountVertical; i++) {
+            this.walls.create(5, 5 + i * 50, 'wall').setAngle(90).body.setSize(8, 64).setOffset(60, 32);
+            this.walls.create(gameWidth - 5, 5 + i * 50, 'wall').setAngle(270).body.setSize(8, 64).setOffset(60, 32);
+        }
+        
+        // 通道/門 - 修改為物理群組
+        this.doors = this.physics.add.group();
+        
+        // 玩家 - 根據畫布尺寸調整初始位置
+        this.player = this.physics.add.sprite(gameWidth/2, gameHeight/2, 'hero').setScale(1.4).setCollideWorldBounds(true);
+        
+        // 能量飲料 - 響應式位置
+        this.energyIcon = this.add.image(gameWidth * 0.94, gameHeight * 0.92, 'energy').setScale(2).setVisible(false).setInteractive();
+        this.energyIcon.on('pointerdown', () => {
+            if (!this.energyIcon.visible || this.isGameOver) return;
+            this.useEnergyDrink();
+        });
+        
+        // 添加能量飲料提示
+        this.energyPrompt = this.add.text(gameWidth * 0.94, gameHeight * 0.87, '按 R 使用', {
+            fontSize: '14px',
+            fill: '#ffffff',
+            backgroundColor: '#000000',
+            padding: { x: 5, y: 2 }
+        }).setOrigin(0.5).setVisible(false);
+
+    // 動畫
+    this.anims.create({ key: 'down', frames: this.anims.generateFrameNumbers('hero', { start: 0, end: 2 }), frameRate: 10, repeat: -1 });
+    this.anims.create({ key: 'left', frames: this.anims.generateFrameNumbers('hero', { start: 3, end: 5 }), frameRate: 10, repeat: -1 });
+    this.anims.create({ key: 'right', frames: this.anims.generateFrameNumbers('hero', { start: 6, end: 8 }), frameRate: 10, repeat: -1 });
+    this.anims.create({ key: 'up', frames: this.anims.generateFrameNumbers('hero', { start: 9, end: 11 }), frameRate: 10, repeat: -1 });
+    this.anims.create({ key: 'slime_move', frames: this.anims.generateFrameNumbers('slime', { start: 0, end: 3 }), frameRate: 6, repeat: -1 });
+        // 血量條 - 響應式位置
+        this.healthText = this.add.text(gameWidth * 0.29, gameHeight * 0.03, `HP: ${this.playerHealth}`, { fontSize: '16px', fill: '#fff' });
+        this.healthBar = this.add.graphics();
+        this.updateHealthBar();
+        this.slimeHealthBar = this.add.graphics();
+        this.updateSlimeHealthBar();
+        
+        // 經驗值與等級顯示 - 響應式位置
+        this.levelText = this.add.text(gameWidth * 0.025, gameHeight * 0.083, `等級: ${this.playerLevel}`, { fontSize: '16px', fill: '#fff' });
+        this.expText = this.add.text(gameWidth * 0.025, gameHeight * 0.117, `經驗: ${this.playerExp}/${this.expToNextLevel}`, { fontSize: '16px', fill: '#fff' });
+        this.expBar = this.add.graphics();
+        this.updateExpBar();
+        
+        // 攻擊力顯示 - 響應式位置
+        this.attackText = this.add.text(gameWidth * 0.025, gameHeight * 0.183, `攻擊力: ${this.playerAttack}`, { fontSize: '16px', fill: '#ff9900' });
+        
+        // 初始化音效
+        this.slashSound = this.sound.add('slashSound', { volume: 0.5 }); // 初始化揮劍音效
+        this.levelUpSound = this.sound.add('levelUpSound', { volume: 0.6 }); // 初始化升級音效
+        this.skill1Sound = this.sound.add('skill1Sound', { volume: 0.5 }); // 初始化技能一音效
+        this.skill2Sound = this.sound.add('skill2Sound', { volume: 0.5 }); // 初始化技能二音效
+        
+        // 劍氣攻擊 
+        this.slashes = this.physics.add.group();
+        this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+        this.cursors = this.input.keyboard.createCursorKeys();
+        
+        // 添加技能按鍵
+        this.qKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Q);
+        this.wKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
+        
+        // 添加 E 鍵用於門交互
+        this.eKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+        
+        // 添加 R 鍵用於使用能量飲料
+        this.rKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+        
+        // 添加門交互提示文本 - 響應式位置
+        this.doorPrompt = this.add.text(gameWidth/2, gameHeight * 0.83, '按 E 進入門', { 
+            fontSize: '18px', 
+            fill: '#ffffff',
+            backgroundColor: '#000000',
+            padding: { x: 10, y: 5 }
+        }).setOrigin(0.5).setVisible(false);
+        
+        // 添加技能圖標和冷卻顯示
+        this.createSkillUI();
+        
+        // 生成第一個房間內容
+        this.generateRoom(this.roomX, this.roomY);
+        // 確保小地圖在一開始就顯示
+        this.drawMiniMap();
+
+        // 添加小地圖標題和邊框，確保它始終顯示在頂層 - 響應式位置
+        // this.add.rectangle(gameWidth * 0.856, gameHeight * 0.217, 125, 125, 0x000000, 0.7).setDepth(9);
+        // this.add.text(gameWidth * 0.781, gameHeight * 0.133, '地圖', { fontSize: '18px', fill: '#ffffff' }).setDepth(10);
+    }
+
+    // --- 房間內容隨機生成 ---
+    generateRoom(x, y) {
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        // 記錄房間種子，確保相同座標生成相同內容
+        const roomSeed = x * 100 + y;
+        this.random = new Phaser.Math.RandomDataGenerator([roomSeed]);
+        
+        // 清除舊房間物件
+        if (this.chest) this.chest.destroy();
+        
+        // 清除所有舊怪物
+        if (this.slimes) {
+            // 使用正確的 Phaser 3 API 清除組中的所有元素
+            this.slimes.clear(true, true);
+        } else {
+            // 創建怪物組
+            this.slimes = this.physics.add.group();
+        }
+        
+        // 清除Boss(如果存在)
+        if (this.boss) {
+            this.boss.destroy();
+            this.boss = null;
+        }
+        
+        // 清除之前的門/通道
+        this.doors.clear(true, true);
+        
+        // --- 修正：重新設置玩家與牆壁的碰撞 ---
+        if (this.playerWallCollider) this.playerWallCollider.destroy();
+        this.playerWallCollider = this.physics.add.collider(this.player, this.walls);
+        
+        // 根據房間位置添加通道/門
+        this.addDoors(x, y);
+        
+        // 判斷是否是Boss房間
+        if (x === this.bossRoomX && y === this.bossRoomY) {
+            // 這是Boss房間，生成Boss
+            this.generateBossRoom();
+        } else {
+            // 普通房間，生成普通內容
+            this.generateNormalRoom();
+        }
+        
+        // 每次進入房間都重設能量飲料
+        this.energyIcon.setVisible(false);
+        
+        // 標記房間已探索
+        this.roomMap[y][x].visited = true;
+        
+        // 更新小地圖
+        this.drawMiniMap();
+        
+        // 顯示房間座標
+        const roomCoord = this.add.text(gameWidth * 0.94, gameHeight * 0.92, `房間: (${x},${y})${(x === this.bossRoomX && y === this.bossRoomY) ? ' [BOSS]' : ''}`, {
+            fontSize: '16px',
+            fill: '#ffffff',
+            backgroundColor: '#000000',
+            padding: { x: 5, y: 2 }
+        }).setOrigin(0, 0);
+        
+        // 3秒後淡出
+        this.tweens.add({
+            targets: roomCoord,
+            alpha: 0,
+            duration: 1000,
+            delay: 2000,
+            onComplete: () => {
+                roomCoord.destroy();
+            }
+        });
+    }
+    
+    // Boss房間生成
+    generateBossRoom() {
+        console.log("正在生成Boss房間...");
+        
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        // 確保Boss只生成一次
+        if (this.bossDefeated) {
+            console.log("Boss已被擊敗，顯示勝利提示");
+            // Boss已被擊敗，不再生成
+            const victoryMessage = this.add.text(gameWidth/2, gameHeight * 0.3, '這個房間曾經有一個強大的Boss...\n但已被你擊敗了！', {
+                fontSize: Math.min(gameWidth, gameHeight) * 0.08 + 'px',
+                fill: '#ffff00',
+                stroke: '#000000',
+                strokeThickness: 4,
+                align: 'center'
+            }).setOrigin(0.5);
+            
+            // 添加一些光效
+            const light = this.add.graphics();
+            light.fillStyle(0xffff00, 0.2);
+            light.fillCircle(gameWidth/2, gameHeight/2, 150);
+            
+            // 發光效果動畫
+            this.tweens.add({
+                targets: light,
+                alpha: 0.1,
+                duration: 2000,
+                yoyo: true,
+                repeat: -1
+            });
+            
+            setTimeout(() => {
+                victoryMessage.destroy();
+            }, 5000);
+            
+            return;
+        }
+        
+        // 檢查Boss是否已經存在但沒被擊敗
+        if (this.hasBossSpawned) {
+            console.log('Boss已存在，重新加載Boss');
+            
+            // 確保先清理之前的Boss相關物件
+            if (this.boss) {
+                this.boss.destroy();
+            }
+            
+            // 清理血條
+            if (this.bossHealthBar) this.bossHealthBar.clear();
+            if (this.bossNameText) this.bossNameText.destroy();
+            if (this.bossHealthText) this.bossHealthText.destroy();
+            
+            // 重新創建Boss
+            this.boss = this.physics.add.sprite(200, 200, 'boss')
+                .setScale(0.5)
+                .setCollideWorldBounds(true);
+            
+            // 還原Boss屬性
+            this.boss.bossHealth = 500 + (this.playerLevel * 50);
+            this.boss.maxHealth = this.boss.bossHealth;
+            this.boss.moveSpeed = 40;
+            this.boss.attackPower = 12;
+            this.boss.lastAttackTime = 0;
+            
+            // Boss與牆壁的碰撞
+            this.physics.add.collider(this.boss, this.walls);
+            
+            // 設置Boss與玩家和劍氣的碰撞
+            this.setupBossInteractions();
+            
+            // 添加Boss血條
+            this.bossHealthBar = this.add.graphics();
+            this.bossNameText = null;  // 確保會重新創建
+            this.bossHealthText = null;
+            this.updateBossHealthBar();
+            
+            console.log('Boss重新加載完成');
+            
+            return;
+        }
+        
+        console.log('首次進入Boss房間，播放特效');
+        // 首次進入Boss房間，播放特效
+        this.hasBossSpawned = true; // 標記Boss已生成
+        
+        // 創建Boss
+        this.boss = this.physics.add.sprite(gameWidth/2, gameHeight/2, 'boss')
+            .setScale(0.5)
+            .setCollideWorldBounds(true);
+            
+        console.log('Boss已創建，大小：0.5');
+        
+        // 設置Boss屬性
+        this.boss.bossHealth = 500 + (this.playerLevel * 50); // 根據玩家等級增加Boss血量
+        this.boss.maxHealth = this.boss.bossHealth;
+        this.boss.moveSpeed = 40;
+        this.boss.attackPower = 12;
+        this.boss.lastAttackTime = 0;
+        
+        // Boss與牆壁的碰撞
+        this.physics.add.collider(this.boss, this.walls);
+        
+        // 設置Boss與玩家和劍氣的碰撞
+        this.setupBossInteractions();
+        
+        // 顯示Boss登場訊息
+        this.cameras.main.flash(500, 255, 0, 0);
+        this.cameras.main.shake(500, 0.05);
+        
+        const bossMessage = this.add.text(400, 150, '終極Boss出現!', {
+            fontSize: '36px',
+            fill: '#ff0000',
+            stroke: '#000000',
+            strokeThickness: 6
+        }).setOrigin(0.5).setDepth(100);
+        
+        // 添加Boss名稱文字
+        const bossName = this.add.text(400, 200, '暗影魔王', {
+            fontSize: '28px',
+            fill: '#ff9900',
+            stroke: '#000000',
+            strokeThickness: 4
+        }).setOrigin(0.5).setDepth(100);
+        
+        // 添加一些入場特效
+        const ring = this.add.graphics();
+        ring.lineStyle(5, 0xff0000, 1);
+        ring.strokeCircle(gameWidth/2, gameHeight/2, 150);
+        
+        this.tweens.add({
+            targets: ring,
+            scaleX: 0.1,
+            scaleY: 0.1,
+            alpha: 0,
+            duration: 1000,
+            ease: 'Power2',
+            onComplete: () => {
+                ring.destroy();
+            }
+        });
+        
+        setTimeout(() => {
+            bossMessage.destroy();
+            bossName.destroy();
+        }, 3000);
+        
+        // 添加Boss血條
+        this.bossHealthBar = this.add.graphics();
+        this.updateBossHealthBar();
+        
+        console.log('Boss生成完成，血量：' + this.boss.bossHealth);
+    }
+    
+    // Boss與玩家和劍氣的碰撞設置，提取為單獨方法
+    setupBossInteractions() {
+        console.log("設置Boss交互...");
+        
+        // 先移除之前可能存在的重複碰撞檢測
+        this.physics.world.colliders.getActive()
+            .filter(collider => 
+                (collider.object1 === this.player && collider.object2 === this.boss) || 
+                (collider.object1 === this.boss && collider.object2 === this.player) ||
+                (collider.object1 === this.slashes && collider.object2 === this.boss) ||
+                (collider.object1 === this.boss && collider.object2 === this.slashes)
+            )
+            .forEach(collider => collider.destroy());
+        
+        // Boss與玩家的碰撞
+        this.physics.add.overlap(this.player, this.boss, () => {
+            if (this.isGameOver) return;
+            
+            const now = this.time.now;
+            if (now - this.boss.lastAttackTime >= 1000) {
+                // Boss攻擊玩家
+                this.playerHealth -= this.boss.attackPower;
+                if (this.playerHealth < 0) this.playerHealth = 0;
+                this.updateHealthBar();
+                this.boss.lastAttackTime = now;
+                
+                // 顯示受傷效果
+                this.cameras.main.flash(300, 255, 0, 0, true);
+                
+                // 顯示傷害文字
+                const damageText = this.add.text(this.player.x, this.player.y - 40, `-${this.boss.attackPower}`, { 
+                    fontSize: '24px', 
+                    fill: '#ff0000',
+                    fontStyle: 'bold',
+                    stroke: '#000000',
+                    strokeThickness: 4
+                }).setOrigin(0.5);
+                
+                this.tweens.add({
+                    targets: damageText,
+                    y: damageText.y - 40,
+                    alpha: 0,
+                    duration: 800,
+                    onComplete: () => {
+                        damageText.destroy();
+                    }
+                });
+                
+                // Boss攻擊動畫
+                this.tweens.add({
+                    targets: this.boss,
+                    x: this.player.x,
+                    y: this.player.y,
+                    duration: 150,
+                    yoyo: true,
+                    ease: 'Power2'
+                });
+                
+                if (this.playerHealth === 0) {
+                    this.isGameOver = true;
+                    this.player.setTint(0xff0000);
+                    this.player.anims.stop();
+                    this.showGameOverUI();
+                }
+            }
+        });
+        
+        // 劍氣與Boss的碰撞
+        this.physics.add.overlap(this.slashes, this.boss, (boss, slash) => {
+        slash.destroy();
+            
+            // 造成傷害(對Boss傷害降低50%)
+            let damage = Math.floor(this.playerAttack * 0.5);
+            this.boss.bossHealth -= damage;
+            console.log(`Boss受到傷害: ${damage}, 剩餘生命: ${this.boss.bossHealth}`);
+            
+            // 顯示傷害數字
+            const damageText = this.add.text(this.boss.x, this.boss.y - 30, damage, { 
+                fontSize: '24px', 
+                fill: '#ff0000',
+                fontStyle: 'bold',
+                stroke: '#ffffff',
+                strokeThickness: 2
+            }).setOrigin(0.5);
+            
+            this.tweens.add({
+                targets: damageText,
+                y: damageText.y - 40,
+                alpha: 0,
+                duration: 800,
+                onComplete: () => {
+                    damageText.destroy();
+                }
+            });
+            
+            // Boss被擊中效果
+            this.boss.setTint(0xff0000);
+            setTimeout(() => {
+                if (this.boss && this.boss.active) {
+                    this.boss.clearTint();
+                }
+            }, 200);
+            
+            // 檢查Boss是否死亡
+            if (this.boss.bossHealth <= 0) {
+                // Boss死亡事件
+                console.log("Boss被擊敗!");
+                this.defeatBoss();
+            }
+            
+            // 更新Boss血條
+            this.updateBossHealthBar();
+        });
+        
+        console.log("Boss交互設置完成");
+    }
+    
+    // Boss擊敗處理
+    defeatBoss() {
+        // 標記Boss已被擊敗
+        this.bossDefeated = true;
+        
+        // 大量經驗獎勵
+        this.gainExperience(500);
+        
+        // 移除Boss血條和名稱
+        if (this.bossHealthBar) {
+            this.bossHealthBar.clear();
+        }
+        if (this.bossNameText) {
+            this.bossNameText.destroy();
+            this.bossNameText = null;
+        }
+        if (this.bossHealthText) {
+            this.bossHealthText.destroy();
+            this.bossHealthText = null;
+        }
+        
+        // Boss死亡效果
+        this.cameras.main.flash(1000, 255, 255, 255);
+        this.cameras.main.shake(1000, 0.05);
+        
+        try {
+            // 播放粒子效果 - 使用try-catch防止粒子效果錯誤
+            const particles = this.add.particles('slash');
+            const emitter = particles.createEmitter({
+                speed: 100,
+                scale: { start: 0.05, end: 0.01 },
+                alpha: { start: 1, end: 0 },
+                lifespan: 1500,
+                blendMode: 'ADD'
+            });
+            
+            if (this.boss && this.boss.active) {
+                emitter.startFollow(this.boss);
+            }
+            
+            // Boss消失效果
+            this.tweens.add({
+                targets: this.boss,
+                alpha: 0,
+                scale: 1.8,
+                duration: 1000,
+                onComplete: () => {
+                    if (this.boss) {
+                        this.boss.destroy();
+                        this.boss = null;
+                    }
+                    
+                    // 確保安全地停止粒子發射器
+                    try {
+                        if (emitter) {
+                            emitter.stop();
+                        }
+                    } catch (error) {
+                        console.error("停止粒子發射器時發生錯誤:", error);
+                    }
+                    
+                    // 延遲一下，讓玩家看到爆炸效果
+                    setTimeout(() => {
+                        try {
+                            // 顯示通關界面
+                            this.showVictoryUI();
+                        } catch (error) {
+                            console.error("顯示勝利界面時發生錯誤:", error);
+                            // 如果出錯，至少顯示簡單的勝利訊息
+                            this.add.text(400, 300, "恭喜通關！", {
+                                fontSize: '48px',
+                                fill: '#ffff00'
+                            }).setOrigin(0.5);
+                            
+                            // 添加重新開始按鈕
+                            const restartBtn = this.add.text(400, 400, "重新開始", {
+                                fontSize: '32px',
+                                fill: '#ffffff',
+                                backgroundColor: '#000000',
+                                padding: { x: 20, y: 10 }
+                            }).setOrigin(0.5).setInteractive();
+                            
+                            restartBtn.on('pointerdown', () => location.reload());
+                        }
+                    }, 1000);
+                }
+            });
+        } catch (error) {
+            console.error("Boss死亡效果出錯:", error);
+            // 如果特效出錯，直接顯示勝利界面
+            setTimeout(() => this.showVictoryUI(), 500);
+        }
+    }
+    
+    // 顯示通關界面
+    showVictoryUI() {
+        // 標記遊戲結束，避免其他更新邏輯執行
+        this.isGameOver = true;
+        
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        // 背景暗化
+        const overlay = this.add.rectangle(0, 0, gameWidth, gameHeight, 0x000000, 0.7)
+            .setOrigin(0)
+            .setDepth(100);
+        
+        // 勝利標題
+        const victoryTitle = this.add.text(gameWidth/2, gameHeight * 0.25, '恭喜通關!', {
+            fontSize: Math.min(gameWidth, gameHeight) * 0.11 + 'px',
+            fill: '#ffff00',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 8
+        }).setOrigin(0.5).setDepth(101);
+        
+        // 添加勝利光環效果
+        const victoryLight = this.add.graphics();
+        victoryLight.fillStyle(0xffff00, 0.3);
+        victoryLight.fillCircle(gameWidth/2, gameHeight * 0.25, 100);
+        victoryLight.setDepth(100);
+        
+        this.tweens.add({
+            targets: victoryLight,
+            alpha: 0.1,
+            duration: 1500,
+            yoyo: true,
+            repeat: -1
+        });
+        
+        // 計算遊戲數據 - 修正遊戲時間計算方式
+        try {
+            // 使用簡單的固定值，避免意外錯誤
+            let minutes = 0;
+            let seconds = 0;
+            
+            // 如果遊戲開始時間存在，則計算遊戲時長
+            if (this.gameStartTime) {
+                const gameTime = Math.floor((Date.now() - this.gameStartTime) / 1000);
+                minutes = Math.floor(gameTime / 60);
+                seconds = gameTime % 60;
+            }
+            
+            // 玩家數據
+            const statsText = this.add.text(gameWidth/2, gameHeight * 0.42, 
+                `最終等級: ${this.playerLevel}\n` +
+                `最終攻擊力: ${this.playerAttack}\n` +
+                `剩餘生命值: ${this.playerHealth}\n` +
+                `遊戲時間: ${minutes}分${seconds}秒`, {
+                    fontSize: Math.min(gameWidth, gameHeight) * 0.04 + 'px',
+                    fill: '#ffffff',
+                    align: 'center',
+                    stroke: '#000000', 
+                    strokeThickness: 3
+            }).setOrigin(0.5).setDepth(101);
+            
+            // 成就解鎖提示
+            let achievementText = '';
+            if (this.playerLevel >= 5) {
+                achievementText += '成就解鎖: "經驗豐富"\n';
+            }
+            if (this.playerHealth >= 80) {
+                achievementText += '成就解鎖: "巧妙閃避"\n';
+            }
+            
+            if (achievementText) {
+                const achievements = this.add.text(gameWidth/2, gameHeight * 0.58, achievementText, {
+                    fontSize: Math.min(gameWidth, gameHeight) * 0.033 + 'px',
+                    fill: '#00ffff',
+                    align: 'center',
+                    stroke: '#000000', 
+                    strokeThickness: 2
+                }).setOrigin(0.5).setDepth(101);
+            }
+        } catch (error) {
+            console.error('顯示遊戲數據時發生錯誤:', error);
+        }
+        
+        // 重新開始按鈕
+        const restartBtn = this.add.text(gameWidth/2, gameHeight * 0.75, '再次遊玩', {
+            fontSize: Math.min(gameWidth, gameHeight) * 0.053 + 'px',
+            fill: '#00ffff',
+            backgroundColor: '#333333',
+            padding: { x: 20, y: 10 }
+        }).setOrigin(0.5).setDepth(101).setInteractive();
+        
+        restartBtn.on('pointerdown', () => {
+            try {
+                // 防止可能的錯誤導致遊戲卡住
+                this.registry.destroy();
+                this.events.off();
+                this.scene.start('LobbyScene');
+            } catch (error) {
+                console.error('重新啟動遊戲時發生錯誤:', error);
+                // 強制刷新頁面作為後備方案
+                location.reload();
+            }
+        });
+        
+        // 按鈕效果
+        restartBtn.on('pointerover', () => {
+            restartBtn.setScale(1.1);
+            restartBtn.setFill('#ffffff');
+        });
+        
+        restartBtn.on('pointerout', () => {
+            restartBtn.setScale(1);
+            restartBtn.setFill('#00ffff');
+        });
+    }
+
+    // --- 添加房間通道/門 ---
+    addDoors(x, y) {
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        // 上門 (y-1)
+        if (y > 0) {
+            const topDoor = this.doors.create(gameWidth/2, 30, 'door').setScale(1.7);
+            topDoor.setAngle(0);
+            topDoor.setOrigin(0.5, 0.5);
+            topDoor.setTint(0x00ffff);
+            topDoor.setInteractive();
+            topDoor.doorDirection = 'up';
+            
+            // 設置較大的碰撞區域
+            if (topDoor.body) {
+                topDoor.body.setSize(100, 60); // 加大碰撞區域
+            }
+            
+            // 添加碰撞檢測，只顯示提示而不直接切換
+            this.physics.add.overlap(this.player, topDoor, () => {
+                this.showDoorPrompt(topDoor);
+            });
+            
+            // 添加上方門的提示文字
+            const topText = this.add.text(gameWidth/2, 60, '↑ 北方', { 
+                fontSize: '14px', 
+                fill: '#ffffff',
+                backgroundColor: '#000000',
+                padding: { x: 4, y: 2 }
+            }).setOrigin(0.5);
+            
+            // 短暫顯示後淡出
+            this.tweens.add({
+                targets: topText,
+                alpha: 0,
+                duration: 1000,
+                delay: 3000,
+                onComplete: () => {
+                    topText.destroy();
+                }
+            });
+        }
+        
+        // 下門 (y+1)
+        if (y < this.mapSize - 1) {
+            const bottomDoor = this.doors.create(gameWidth/2, gameHeight - 30, 'door').setScale(1.7);
+            bottomDoor.setAngle(180);
+            bottomDoor.setOrigin(0.5, 0.5);
+            bottomDoor.setTint(0x00ffff);
+            bottomDoor.setInteractive();
+            bottomDoor.doorDirection = 'down';
+            
+            // 設置較大的碰撞區域
+            if (bottomDoor.body) {
+                bottomDoor.body.setSize(100, 60); // 加大碰撞區域
+            }
+            
+            // 添加碰撞檢測，只顯示提示而不直接切換
+            this.physics.add.overlap(this.player, bottomDoor, () => {
+                this.showDoorPrompt(bottomDoor);
+            });
+            
+            // 添加下方門的提示文字
+            const bottomText = this.add.text(gameWidth/2, gameHeight - 60, '↓ 南方', { 
+                fontSize: '14px', 
+                fill: '#ffffff',
+                backgroundColor: '#000000',
+                padding: { x: 4, y: 2 }
+            }).setOrigin(0.5);
+            
+            // 短暫顯示後淡出
+            this.tweens.add({
+                targets: bottomText,
+                alpha: 0,
+                duration: 1000,
+                delay: 3000,
+                onComplete: () => {
+                    bottomText.destroy();
+                }
+            });
+        }
+        
+        // 左門 (x-1)
+        if (x > 0) {
+            const leftDoor = this.doors.create(30, gameHeight/2, 'door').setScale(1.7);
+            leftDoor.setAngle(-90);
+            leftDoor.setOrigin(0.5, 0.5);
+            leftDoor.setTint(0x00ffff);
+            leftDoor.setInteractive();
+            leftDoor.doorDirection = 'left';
+            
+            // 設置較大的碰撞區域
+            if (leftDoor.body) {
+                leftDoor.body.setSize(100, 60); // 加大碰撞區域
+            }
+            
+            // 添加碰撞檢測，只顯示提示而不直接切換
+            this.physics.add.overlap(this.player, leftDoor, () => {
+                this.showDoorPrompt(leftDoor);
+            });
+            
+            // 添加左方門的提示文字
+            const leftText = this.add.text(60, gameHeight/2, '← 西方', { 
+                fontSize: '14px', 
+                fill: '#ffffff',
+                backgroundColor: '#000000',
+                padding: { x: 4, y: 2 }
+            }).setOrigin(0, 0.5);
+            
+            // 短暫顯示後淡出
+            this.tweens.add({
+                targets: leftText,
+                alpha: 0,
+                duration: 1000,
+                delay: 3000,
+                onComplete: () => {
+                    leftText.destroy();
+                }
+            });
+        }
+        
+        // 右門 (x+1)
+        if (x < this.mapSize - 1) {
+            const rightDoor = this.doors.create(gameWidth - 30, gameHeight/2, 'door').setScale(1.7);
+            rightDoor.setAngle(90);
+            rightDoor.setOrigin(0.5, 0.5);
+            rightDoor.setTint(0x00ffff);
+            rightDoor.setInteractive();
+            rightDoor.doorDirection = 'right';
+            
+            // 設置較大的碰撞區域
+            if (rightDoor.body) {
+                rightDoor.body.setSize(100, 60); // 加大碰撞區域
+            }
+            
+            // 添加碰撞檢測，只顯示提示而不直接切換
+            this.physics.add.overlap(this.player, rightDoor, () => {
+                this.showDoorPrompt(rightDoor);
+            });
+            
+            // 添加右方門的提示文字
+            const rightText = this.add.text(gameWidth - 60, gameHeight/2, '東方 →', { 
+                fontSize: '14px', 
+                fill: '#ffffff',
+                backgroundColor: '#000000',
+                padding: { x: 4, y: 2 }
+            }).setOrigin(1, 0.5);
+            
+            // 短暫顯示後淡出
+            this.tweens.add({
+                targets: rightText,
+                alpha: 0,
+                duration: 1000,
+                delay: 3000,
+                onComplete: () => {
+                    rightText.destroy();
+                }
+            });
+        }
+    }
+
+    // 顯示門提示及設置當前門
+    showDoorPrompt(door) {
+        // 如果已經在切換房間，則不顯示提示
+        if (this.isChangingRoom) return;
+        
+        // 保存當前可交互的門
+        this.currentDoor = door;
+        
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        // 設置提示文字的位置
+        let promptX = gameWidth/2;
+        let promptY = gameHeight * 0.83;
+        
+        // 根據門的方向調整提示位置
+        switch(door.doorDirection) {
+            case 'up':
+                promptY = door.y + 40;
+                break;
+            case 'down':
+                promptY = door.y - 40;
+                break;
+            case 'left':
+                promptX = door.x + 80;
+                promptY = door.y;
+                break;
+            case 'right':
+                promptX = door.x - 80;
+                promptY = door.y;
+                break;
+        }
+        
+        // 顯示提示文本
+        this.doorPrompt.setVisible(true);
+        this.doorPrompt.setPosition(promptX, promptY);
+        
+        // 添加閃爍效果
+        if (!this.doorPromptTween) {
+            this.doorPromptTween = this.tweens.add({
+                targets: this.doorPrompt,
+                alpha: 0.6,
+                duration: 500,
+                yoyo: true,
+                repeat: -1
+            });
+        }
+    }
+    
+    // 隱藏門提示
+    hideDoorPrompt() {
+        this.currentDoor = null;
+        this.doorPrompt.setVisible(false);
+        
+        // 停止閃爍動畫
+        if (this.doorPromptTween) {
+            this.doorPromptTween.stop();
+            this.doorPromptTween = null;
+            this.doorPrompt.alpha = 1;
+        }
+    }
+    
+    // 經驗值條更新
+    updateExpBar() {
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        this.expBar.clear();
+        this.expBar.fillStyle(0x505050).fillRect(gameWidth * 0.025, gameHeight * 0.15, 200, 10); // 背景條
+        this.expBar.fillStyle(0x00ffff).fillRect(gameWidth * 0.025, gameHeight * 0.15, 200 * (this.playerExp / this.expToNextLevel), 10); // 前景條
+        this.expText.setText(`經驗: ${this.playerExp}/${this.expToNextLevel}`);
+    }
+    
+    // 角色獲得經驗值
+    gainExperience(exp) {
+        this.playerExp += exp;
+        
+        // 顯示獲得經驗值的文字
+        const expText = this.add.text(this.player.x, this.player.y - 60, `+${exp} 經驗`, {
+            fontSize: '18px',
+            fill: '#00ffff'
+        }).setOrigin(0.5);
+        
+        this.tweens.add({
+            targets: expText,
+            y: expText.y - 30,
+            alpha: 0,
+            duration: 1500,
+            onComplete: () => {
+                expText.destroy();
+            }
+        });
+        
+        // 檢查是否升級
+        if (this.playerExp >= this.expToNextLevel) {
+            this.levelUp();
+        }
+        
+        // 更新經驗值條
+        this.updateExpBar();
+    }
+    
+    // 角色升級
+    levelUp() {
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        // 播放升級音效
+        try {
+            this.levelUpSound.play();
+            console.log('播放升級音效');
+        } catch (error) {
+            console.warn('播放升級音效失敗:', error);
+        }
+        
+        this.playerLevel++;
+        this.playerExp -= this.expToNextLevel;
+        // 增加下一級所需經驗
+        this.expToNextLevel = Math.floor(this.expToNextLevel * 1.5);
+        
+        // 提高角色屬性
+        this.playerHealth += 20;
+        if (this.playerHealth > 100) {
+            this.playerHealth = 100; // 恢復滿血
+        }
+        this.updateHealthBar();
+        
+        // 提高攻擊力
+        this.playerAttack += 5;
+        this.attackText.setText(`攻擊力: ${this.playerAttack}`); // 更新攻擊力顯示
+        
+        // 顯示升級效果
+        this.cameras.main.flash(500, 255, 255, 0); // 黃色閃光
+        
+        // 升級文字
+        const levelUpText = this.add.text(gameWidth/2, gameHeight/2, '升級！', {
+            fontSize: '48px',
+            fill: '#ffff00',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 6
+        }).setOrigin(0.5).setDepth(100);
+        
+        // 顯示升級獲得的提升
+        const bonusText = this.add.text(gameWidth/2, gameHeight * 0.58, `生命值上限 +20\n攻擊力 +5 (目前: ${this.playerAttack})`, {
+            fontSize: '22px',
+            fill: '#ffffff',
+            stroke: '#000000',
+            strokeThickness: 4,
+            align: 'center'
+        }).setOrigin(0.5).setDepth(100);
+        
+        // 動畫效果
+        this.tweens.add({
+            targets: [levelUpText, bonusText],
+            alpha: 0,
+            y: '-=50',
+            duration: 2000,
+            onComplete: () => {
+                levelUpText.destroy();
+                bonusText.destroy();
+            }
+        });
+        
+        // 更新等級顯示
+        this.levelText.setText(`等級: ${this.playerLevel}`);
+        this.updateExpBar();
+    }
+
+    // --- 小地圖繪製 ---
+    drawMiniMap() {
+        // 設定小地圖大小和位置
+        const size = 20, gap = 4;
+        const offsetX = 1285 - (this.mapSize * (size + gap)) / 2;
+        const offsetY = 130 - (this.mapSize * (size + gap)) / 2;
+        
+        // 清除舊的小地圖圖形
+        this.miniMap.clear();
+        
+        // 繪製房間方格
+        for (let y = 0; y < this.mapSize; y++) {
+            for (let x = 0; x < this.mapSize; x++) {
+                // 決定顏色和透明度
+                let color, borderColor, alpha = 1;
+                
+                // 未探索房間
+                if (!this.roomMap[y][x].visited) {
+                    color = 0x333333;
+                    borderColor = 0x666666;
+                    alpha = 0.6;
+                } 
+                // 已探索房間
+                else {
+                    color = 0xaaaaaa;
+                    borderColor = 0xffffff;
+                    
+                    // 當前房間特殊顯示
+                    if (x === this.roomX && y === this.roomY) {
+                        color = 0x00ff00;  // 亮綠色
+                        borderColor = 0xffff00;  // 黃色邊框
+                        alpha = 1;
+                    }
+                }
+                
+                // 繪製房間填充
+                this.miniMap.fillStyle(color, alpha);
+                this.miniMap.fillRect(
+                    offsetX + x * (size + gap),
+                    offsetY + y * (size + gap),
+                    size, size
+                );
+                
+                // 繪製房間邊框
+                this.miniMap.lineStyle(1, borderColor, alpha);
+                this.miniMap.strokeRect(
+                    offsetX + x * (size + gap),
+                    offsetY + y * (size + gap),
+                    size, size
+                );
+                
+                // 如果是當前房間，添加閃爍效果
+                if (x === this.roomX && y === this.roomY) {
+                    if (!this.currentRoomMarker) {
+                        this.currentRoomMarker = this.add.rectangle(
+                            offsetX + x * (size + gap) + size/2,
+                            offsetY + y * (size + gap) + size/2,
+                            size, size,
+                            0xffffff, 0.5
+                        ).setDepth(10);
+                        
+                        // 添加閃爍動畫
+                        this.tweens.add({
+                            targets: this.currentRoomMarker,
+                            alpha: 0.2,
+                            duration: 800,
+                            yoyo: true,
+                            repeat: -1
+                        });
+                    } else {
+                        // 更新位置
+                        this.currentRoomMarker.setPosition(
+                            offsetX + x * (size + gap) + size/2,
+                            offsetY + y * (size + gap) + size/2
+                        );
+                    }
+                }
+                
+                // 顯示相鄰房間的門/通道
+                const drawPath = (adjacentX, adjacentY, color) => {
+                    if (adjacentX >= 0 && adjacentX < this.mapSize &&
+                        adjacentY >= 0 && adjacentY < this.mapSize &&
+                        this.roomMap[adjacentY][adjacentX].visited) {
+                        
+                        // 計算中心點
+                        const centerX1 = offsetX + x * (size + gap) + size/2;
+                        const centerY1 = offsetY + y * (size + gap) + size/2;
+                        const centerX2 = offsetX + adjacentX * (size + gap) + size/2;
+                        const centerY2 = offsetY + adjacentY * (size + gap) + size/2;
+                        
+                        // 繪製連接線
+                        this.miniMap.lineStyle(3, color, 0.8);
+                        this.miniMap.beginPath();
+                        this.miniMap.moveTo(centerX1, centerY1);
+                        this.miniMap.lineTo((centerX1 + centerX2)/2, (centerY1 + centerY2)/2);
+                        this.miniMap.closePath();
+                        this.miniMap.strokePath();
+                    }
+                };
+                
+                // 繪製通道連接
+                if (this.roomMap[y][x].visited) {
+                    // 上方
+                    if (y > 0) drawPath(x, y-1, 0x00ffff);
+                    // 下方
+                    if (y < this.mapSize-1) drawPath(x, y+1, 0x00ffff);
+                    // 左方
+                    if (x > 0) drawPath(x-1, y, 0x00ffff);
+                    // 右方
+                    if (x < this.mapSize-1) drawPath(x+1, y, 0x00ffff);
+                }
+            }
+        }
+        
+        // 確保小地圖始終在最上層
+        this.miniMap.setDepth(10);
+    }
+    
+    // --- 血量條更新 ---
+    updateHealthBar() {
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        this.healthBar.clear();
+        this.healthBar.fillStyle(0x808080).fillRect(gameWidth * 0.025, gameHeight * 0.033, 200, 20);
+        this.healthBar.fillStyle(0xff0000).fillRect(gameWidth * 0.025, gameHeight * 0.033, 2 * this.playerHealth, 20);
+        this.healthText.setText(`HP: ${this.playerHealth}`);
+    }
+    updateSlimeHealthBar() {
+        this.slimeHealthBar.clear();
+        
+        // 檢查 slimes 是否存在
+        if (!this.slimes) return;
+        
+        // 使用 getChildren 獲取組中的子元素
+        const slimeChildren = this.slimes.getChildren();
+        
+        // 檢查是否有怪物
+        if (!slimeChildren || slimeChildren.length === 0) return;
+        
+        const barWidth = 40, barHeight = 6, offsetY = 20;
+        
+        slimeChildren.forEach(slime => {
+            // 只為活著且未標記為死亡的怪物、透明度為1的怪物顯示血條
+            if (slime && 
+                slime.active && 
+                !slime.isDead && 
+                slime.alpha === 1 &&  // 確保只為完全不透明的怪物顯示血條
+                typeof slime.slimeHealth !== 'undefined' && 
+                typeof slime.maxHealth !== 'undefined') {
+                
+                // 根據生命值比例決定顏色
+                let healthColor = 0x00ff00; // 默認綠色
+                
+                const healthRatio = slime.slimeHealth / slime.maxHealth;
+                if (healthRatio < 0.3) {
+                    healthColor = 0xff0000; // 少於30%血量顯示紅色
+                } else if (healthRatio < 0.6) {
+                    healthColor = 0xffff00; // 少於60%血量顯示黃色
+                }
+                
+                // 繪製血條背景
+                this.slimeHealthBar.fillStyle(0x000000, 0.7).fillRect(
+                    slime.x - barWidth / 2 - 1, 
+                    slime.y - offsetY - 1, 
+                    barWidth + 2, 
+                    barHeight + 2
+                );
+                
+                // 繪製血條前景
+                this.slimeHealthBar.fillStyle(healthColor).fillRect(
+                    slime.x - barWidth / 2, 
+                    slime.y - offsetY, 
+                    (barWidth * slime.slimeHealth) / slime.maxHealth, 
+                    barHeight
+                );
+            }
+        });
+    }
+    
+    // --- 顯示失敗與重新開始按鈕 ---
+    showGameOverUI() {
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        // 失敗大字
+        this.failText = this.add.text(gameWidth/2, gameHeight * 0.37, '失敗', { 
+            fontSize: Math.min(gameWidth, gameHeight) * 0.11 + 'px', 
+            fill: '#ff0000', 
+            fontStyle: 'bold' 
+        }).setOrigin(0.5);
+        // 重新開始按鈕
+        this.restartBtn = this.add.text(gameWidth/2, gameHeight * 0.53, '重新開始', { 
+            fontSize: Math.min(gameWidth, gameHeight) * 0.06 + 'px', 
+            fill: '#fff', 
+            backgroundColor: '#222', 
+            padding: { x: 30, y: 10 } 
+        })
+            .setOrigin(0.5)
+            .setInteractive({ useHandCursor: true });
+        this.restartBtn.on('pointerdown', () => {
+            this.scene.restart(); // 重新啟動本場景
+        });
+    }
+    
+    // 添加門碰撞處理方法
+    handleDoorCollision(direction) {
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        // 防止重複快速切換
+        if (this.isChangingRoom) {
+            console.log('正在切換房間，請稍候...');
+        return;
+    }
+
+        // 標記正在切換房間
+        this.isChangingRoom = true;
+        console.log(`前往${direction}方向的房間`);
+        
+        // 隱藏門提示
+        this.hideDoorPrompt();
+        
+        // 根據方向確定目標房間坐標
+        let nx = this.roomX, ny = this.roomY;
+        if (direction === 'left') {
+            nx--;
+            this.player.anims.play('left');
+        }
+        if (direction === 'right') {
+            nx++;
+            this.player.anims.play('right');
+        }
+        if (direction === 'up') {
+            ny--;
+            this.player.anims.play('up');
+        }
+        if (direction === 'down') {
+            ny++;
+            this.player.anims.play('down');
+        }
+        
+        // 確保目標房間在有效範圍內
+        if (nx >= 0 && nx < this.mapSize && ny >= 0 && ny < this.mapSize) {
+            // 顯示切換特效
+            this.cameras.main.fadeOut(300, 0, 0, 0);
+            
+            // 等待淡出完成後再生成新房間
+            this.cameras.main.once('camerafadeoutcomplete', () => {
+                // 更新房間坐標
+                this.roomX = nx;
+                this.roomY = ny;
+                
+                // 生成新房間
+                this.generateRoom(this.roomX, this.roomY);
+                
+                // 設定玩家位置到新房間正確的入口位置
+                const gameWidth = this.sys.game.config.width;
+                const gameHeight = this.sys.game.config.height;
+                
+                switch(direction) {
+                    case 'left':
+                        this.player.setPosition(gameWidth - 100, gameHeight/2); // 右側入口
+                        break;
+                    case 'right':
+                        this.player.setPosition(100, gameHeight/2);  // 左側入口
+                        break; 
+                    case 'up':
+                        this.player.setPosition(gameWidth/2, gameHeight - 100); // 下方入口
+                        break;
+                    case 'down':
+                        this.player.setPosition(gameWidth/2, 100);  // 上方入口
+                        break;
+                }
+                
+                // 淡入效果
+                this.cameras.main.fadeIn(300);
+                
+                // 顯示方向提示
+                let dirText = '';
+                if (direction === 'left') dirText = '向西';
+                if (direction === 'right') dirText = '向東';
+                if (direction === 'up') dirText = '向北';
+                if (direction === 'down') dirText = '向南';
+                
+                const roomText = this.add.text(gameWidth/2, gameHeight * 0.17, `${dirText}移動到新房間 (${this.roomX},${this.roomY})`, { 
+                    fontSize: '20px', 
+                    fill: '#ffffff',
+                    backgroundColor: '#000000',
+                    padding: { x: 10, y: 5 }
+                }).setOrigin(0.5);
+                
+                // 2秒後淡出提示
+                this.tweens.add({
+                    targets: roomText,
+                    alpha: 0,
+                    duration: 1000,
+                    delay: 1000,
+                    onComplete: () => {
+                        roomText.destroy();
+                    }
+                });
+                
+                // 短暫延遲後允許再次切換房間
+                setTimeout(() => {
+                    this.isChangingRoom = false;
+                    console.log('可以再次切換房間');
+                }, 1000);
+            });
+    } else {
+            // 如果目標房間不在有效範圍內，重置狀態
+            this.isChangingRoom = false;
+        }
+    }
+
+    update() {
+        if (this.isGameOver) {
+            this.player.setVelocity(0);
+            return;
+        }
+        
+        // 重置玩家速度
+        this.player.setVelocity(0);
+        
+        // 檢測 E 鍵是否按下，如果有當前可交互的門，則進行房間切換
+        if (Phaser.Input.Keyboard.JustDown(this.eKey) && this.currentDoor) {
+            this.handleDoorCollision(this.currentDoor.doorDirection);
+            this.hideDoorPrompt();
+        }
+        
+        // 檢測 R 鍵是否按下，如果有能量飲料，則使用
+        if (Phaser.Input.Keyboard.JustDown(this.rKey)) {
+            this.useEnergyDrink();
+        }
+        
+        // 如果玩家沒有與任何門重疊，隱藏提示
+        if (!this.physics.overlap(this.player, this.doors)) {
+            this.hideDoorPrompt();
+        }
+        
+        // --- 移動與面向判斷 ---
+        if (this.cursors.left.isDown) {
+            this.player.setVelocityX(-100);
+            this.player.anims.play('left', true);
+            this.facing = 'left'; // 記錄面向
+        } else if (this.cursors.right.isDown) {
+            this.player.setVelocityX(100);
+            this.player.anims.play('right', true);
+            this.facing = 'right';
+        } else if (this.cursors.up.isDown) {
+            this.player.setVelocityY(-100);
+            this.player.anims.play('up', true);
+            this.facing = 'up';
+        } else if (this.cursors.down.isDown) {
+            this.player.setVelocityY(100);
+            this.player.anims.play('down', true);
+            this.facing = 'down';
+        } else {
+            this.player.anims.stop();
+        }
+        
+        // --- 發射劍氣，方向依照面向 ---
+        if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
+            // 播放揮劍音效
+            try {
+                this.slashSound.play();
+            } catch (error) {
+                console.warn('播放揮劍音效失敗:', error);
+            }
+            
+            let slash = this.slashes.create(this.player.x, this.player.y, 'slash');
+    slash.setScale(0.05);
+    slash.body.setAllowGravity(false);
+            // 依照面向方向發射
+            if (this.facing === 'left') {
+        slash.setVelocityX(-300);
+                slash.setAngle(0);
+            } else if (this.facing === 'right') {
+        slash.setVelocityX(300);
+                slash.setAngle(180);
+            } else if (this.facing === 'up') {
+        slash.setVelocityY(-300);
+                slash.setAngle(90);
+    } else {
+        slash.setVelocityY(300);
+                slash.setAngle(270);
+            }
+            
+            // 添加劍氣光效
+            this.tweens.add({
+                targets: slash,
+                alpha: 0.8,
+                duration: 100,
+                yoyo: true,
+                repeat: 1
+            });
+            
+            // 自動銷毀，避免遊戲對象堆積
+            setTimeout(() => {
+                if (slash && slash.active) {
+                    slash.destroy();
+                }
+            }, 2000);
+        }
+        
+        // 技能一：Q鍵施放範圍爆炸
+        if (Phaser.Input.Keyboard.JustDown(this.qKey)) {
+            // 播放技能一音效
+            try {
+                this.skill1Sound.play();
+            } catch (error) {
+                console.warn('播放技能一音效失敗:', error);
+            }
+            this.useSkill1();
+        }
+        
+        // 技能二：W鍵施放三重能量彈
+        if (Phaser.Input.Keyboard.JustDown(this.wKey)) {
+            // 播放技能二音效
+            try {
+                this.skill2Sound.play();
+            } catch (error) {
+                console.warn('播放技能二音效失敗:', error);
+            }
+            this.useSkill2();
+        }
+        
+        // 史萊姆追蹤玩家，先檢查是否存在且是活的
+        if (this.slimes) {
+            // 使用 getChildren 獲取組中的子元素
+            const slimeChildren = this.slimes.getChildren();
+            
+            // 檢查是否有怪物
+            if (slimeChildren && slimeChildren.length > 0) {
+                slimeChildren.forEach(slime => {
+                    if (slime && slime.active && !slime.isDead) {
+                        // 確保此史萊姆沒有被標記為死亡
+                        this.physics.moveToObject(slime, this.player, slime.slimeSpeed || 40);
+                    }
+                });
+            }
+            
+            // 更新怪物血條
+            this.updateSlimeHealthBar();
+        }
+        
+        // 更新Boss的行為(如果存在)
+        if (this.boss && !this.bossDefeated) {
+            // 讓Boss慢慢移向玩家
+            this.physics.moveToObject(this.boss, this.player, this.boss.moveSpeed);
+            
+            // 更新Boss血條
+            this.updateBossHealthBar();
+        }
+        
+        // 確保小地圖保持更新
+        if (this.time.now % 60 === 0) { // 每60毫秒更新一次，避免過於頻繁
+            this.drawMiniMap();
+        }
+        
+        // 更新技能UI狀態
+        this.updateSkillUI();
+    }
+
+    // Boss血條更新
+    updateBossHealthBar() {
+        if (!this.boss || !this.bossHealthBar) return;
+        
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        this.bossHealthBar.clear();
+        
+        // Boss血條背景
+        this.bossHealthBar.fillStyle(0x222222, 0.8);
+        this.bossHealthBar.fillRect(gameWidth * 0.1875, gameHeight * 0.05, gameWidth * 0.625, 25);
+        
+        // Boss血條
+        const healthPercent = this.boss.bossHealth / this.boss.maxHealth;
+        let barColor;
+        
+        // 根據血量百分比顯示不同顏色
+        if (healthPercent > 0.6) {
+            barColor = 0x00ff00; // 綠色
+        } else if (healthPercent > 0.3) {
+            barColor = 0xffff00; // 黃色
+        } else {
+            barColor = 0xff0000; // 紅色
+        }
+        
+        this.bossHealthBar.fillStyle(barColor, 1);
+        this.bossHealthBar.fillRect(gameWidth * 0.1875, gameHeight * 0.05, (gameWidth * 0.625) * healthPercent, 25);
+        
+        // 顯示Boss名稱和血量
+        if (!this.bossNameText) {
+            this.bossNameText = this.add.text(gameWidth/2, gameHeight * 0.025, '暗影魔王', {
+                fontSize: '18px',
+                fill: '#ffffff',
+                stroke: '#000000',
+                strokeThickness: 3
+            }).setOrigin(0.5);
+        }
+        
+        if (!this.bossHealthText) {
+            this.bossHealthText = this.add.text(gameWidth/2, gameHeight * 0.07, `${this.boss.bossHealth}/${this.boss.maxHealth}`, {
+                fontSize: '16px',
+                fill: '#ffffff'
+            }).setOrigin(0.5);
+        } else {
+            this.bossHealthText.setText(`${this.boss.bossHealth}/${this.boss.maxHealth}`);
+        }
+    }
+    
+    // 普通房間生成(原有的生成邏輯)
+    generateNormalRoom() {
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        // 隨機生成寶箱
+        if (this.random.frac() < 0.5) {
+            const chestX = this.random.between(100, gameWidth - 100);
+            const chestY = this.random.between(100, gameHeight - 100);
+            this.chest = this.physics.add.image(chestX, chestY, 'chest').setScale(1.7);
+            this.chest.body.setAllowGravity(false);
+            this.physics.add.overlap(this.player, this.chest, () => {
+                this.chest.destroy();
+                this.energyIcon.setVisible(true);
+                this.energyPrompt.setVisible(true);
+                
+                // 添加獲得寶箱的提示
+                const treasureText = this.add.text(gameWidth/2, gameHeight * 0.25, '獲得寶箱！能量飲料已添加到物品欄', { 
+                    fontSize: '18px', 
+                    fill: '#ffff00'
+                }).setOrigin(0.5);
+                
+                // 2秒後淡出
+                this.tweens.add({
+                    targets: treasureText,
+                    alpha: 0,
+                    duration: 1000,
+                    delay: 1000,
+                    onComplete: () => {
+                        treasureText.destroy();
+                    }
+                });
+            });
+        } else {
+            this.chest = null;
+        }
+        
+        // 生成2-3隻怪物
+        const monsterCount = this.random.between(2, 3);
+        
+        // 根據房間座標計算基礎難度
+        const farFromStart = Math.abs(this.roomX - 2) + Math.abs(this.roomY - 2);
+        const baseDifficulty = 1 + (farFromStart * 0.2);
+        
+        for (let i = 0; i < monsterCount; i++) {
+            // 為每隻怪物生成隨機位置
+            let slimeX, slimeY, isValidPosition;
+            
+            // 確保怪物之間有足夠距離
+            do {
+                isValidPosition = true;
+                slimeX = this.random.between(100, gameWidth - 100);
+                slimeY = this.random.between(100, gameHeight - 100);
+                
+                // 檢查與寶箱的距離
+                if (this.chest && 
+                    Phaser.Math.Distance.Between(slimeX, slimeY, this.chest.x, this.chest.y) < 100) {
+                    isValidPosition = false;
+                    continue;
+                }
+                
+                // 檢查與其他怪物的距離
+                this.slimes.getChildren().forEach(existingSlime => {
+                    if (Phaser.Math.Distance.Between(slimeX, slimeY, existingSlime.x, existingSlime.y) < 150) {
+                        isValidPosition = false;
+                    }
+                });
+                
+                // 檢查與玩家的距離（避免怪物生成在玩家附近）
+                if (Phaser.Math.Distance.Between(slimeX, slimeY, this.player.x, this.player.y) < 150) {
+                    isValidPosition = false;
+                }
+                
+            } while (!isValidPosition);
+            
+            // 為每隻怪物設置不同特性
+            const typeVariant = this.random.between(0, 2); // 0:普通，1:強壯，2:快速
+            
+            // 計算怪物屬性
+            let slimeHealth, slimeScale, slimeSpeed, slimeColor, slimeType;
+            switch(typeVariant) {
+                case 0: // 普通怪物
+                    slimeHealth = Math.floor(80 * baseDifficulty);
+                    slimeScale = 1.2 + (baseDifficulty * 0.1);
+                    slimeSpeed = 40;
+                    slimeColor = 0xffffff; // 白色
+                    slimeType = '普通';
+                    break;
+                case 1: // 強壯怪物
+                    slimeHealth = Math.floor(150 * baseDifficulty);
+                    slimeScale = 1.8 + (baseDifficulty * 0.15);
+                    slimeSpeed = 30;
+                    slimeColor = 0xff5500; // 橙色
+                    slimeType = '強壯';
+                    break;
+                case 2: // 快速怪物
+                    slimeHealth = Math.floor(60 * baseDifficulty);
+                    slimeScale = 1.0 + (baseDifficulty * 0.05);
+                    slimeSpeed = 70;
+                    slimeColor = 0x00ffff; // 青色
+                    slimeType = '快速';
+                    break;
+            }
+            
+            // 創建怪物
+            const slime = this.physics.add.sprite(slimeX, slimeY, 'slime')
+                .setCollideWorldBounds(true)
+                .setScale(slimeScale)
+                .setTint(slimeColor)
+                .play('slime_move');
+            
+            // 設置怪物屬性
+            slime.slimeType = slimeType;
+            slime.slimeHealth = slimeHealth;
+            slime.maxHealth = slimeHealth;
+            slime.slimeSpeed = slimeSpeed;
+            
+            // 添加到怪物組
+            this.slimes.add(slime);
+            
+            // 添加碰撞
+            this.physics.add.collider(slime, this.walls);
+            
+            // 添加與玩家的交互
+            this.physics.add.overlap(this.player, slime, () => {
+                if (this.isGameOver) return;
+                
+                const now = this.time.now;
+                if (!slime.lastAttackTime || now - slime.lastAttackTime >= 1000) {
+                    // 根據怪物類型造成不同傷害
+                    let damage = 5;
+                    if (slime.slimeType === '強壯') damage = 10;
+                    if (slime.slimeType === '快速') damage = 3;
+                    
+                    this.playerHealth -= damage;
+                    if (this.playerHealth < 0) this.playerHealth = 0;
+                    this.updateHealthBar();
+                    slime.lastAttackTime = now;
+                    
+                    // 顯示受傷效果
+                    this.cameras.main.flash(200, 255, 0, 0, true);
+                    
+                    // 顯示傷害文字
+                    const damageText = this.add.text(this.player.x, this.player.y - 40, `-${damage}`, { 
+                        fontSize: '20px', 
+                        fill: '#ff0000',
+                        fontStyle: 'bold'
+                    }).setOrigin(0.5);
+                    
+                    this.tweens.add({
+                        targets: damageText,
+                        y: damageText.y - 30,
+                        alpha: 0,
+                        duration: 800,
+                        onComplete: () => {
+                            damageText.destroy();
+                        }
+                    });
+                    
+                    if (this.playerHealth === 0) {
+                        this.isGameOver = true;
+                        this.player.setTint(0xff0000);
+                        this.player.anims.stop();
+                        this.showGameOverUI();
+                    }
+                }
+            });
+            
+            // 添加與劍氣的交互
+            this.physics.add.overlap(this.slashes, slime, (slime, slash) => {
+                slash.destroy();
+                
+                // 確保 slime 物件存在且有 slimeHealth 屬性
+                if (!slime || !slime.active || typeof slime.slimeHealth === 'undefined') {
+                    return;
+                }
+                
+                // 造成傷害 - 使用玩家攻擊力
+                let damage = this.playerAttack;
+                slime.slimeHealth -= damage;
+                
+                // 顯示傷害數字
+                const damageText = this.add.text(slime.x, slime.y - 30, damage, { 
+                    fontSize: '18px', 
+                    fill: '#ff0000',
+                    fontStyle: 'bold'
+                }).setOrigin(0.5);
+                
+                this.tweens.add({
+                    targets: damageText,
+                    y: damageText.y - 50,
+                    alpha: 0,
+                    duration: 800,
+                    onComplete: () => {
+                        damageText.destroy();
+                    }
+                });
+                
+                // 檢查怪物是否死亡
+                if (slime.slimeHealth <= 0) {
+                    // 標記為已死亡，避免重複處理
+                    slime.isDead = true;
+                    
+                    // 立即移除血條（通過設置透明度為0）
+                    slime.alpha = 0.9;
+                    
+                    // 先清除血條
+                    this.updateSlimeHealthBar();
+                    
+                    // 根據怪物類型獲得不同經驗值
+                    let expGained = 80; // 默認經驗
+                    if (slime.slimeType === '強壯') {
+                        expGained = 180; // 強壯怪物給予更多經驗
+                    } else if (slime.slimeType === '快速') {
+                        expGained = 120; // 快速怪物給予中等經驗
+                    }
+                    
+                    // 獲得經驗值
+                    this.gainExperience(expGained);
+                    
+                    // 怪物死亡效果
+                    this.tweens.add({
+                        targets: slime,
+                        alpha: 0,
+                        scale: slime.scale * 0.5,
+                        duration: 300,
+                        onComplete: () => {
+                            // 確保死亡時徹底從系統中移除
+                            slime.destroy();
+                            
+                            // 隨機掉落能量飲料 (15% 幾率)
+                            if (this.random.frac() < 0.15) {
+                                this.energyIcon.setVisible(true);
+                                this.energyPrompt.setVisible(true);
+                                
+                                // 顯示掉落提示
+                                const dropText = this.add.text(slime.x, slime.y, '掉落能量飲料！', { 
+                                    fontSize: '16px', 
+                                    fill: '#00ffff'
+                                }).setOrigin(0.5);
+                                
+                                this.tweens.add({
+                                    targets: dropText,
+                                    y: dropText.y - 30,
+                                    alpha: 0,
+                                    duration: 1500,
+                                    onComplete: () => {
+                                        dropText.destroy();
+                                    }
+                                });
+                            }
+                        }
+                    });
+                    
+                    // 顯示擊敗文字
+                    const victoryText = this.add.text(slime.x, slime.y - 50, `擊敗${slime.slimeType}怪物！`, { 
+                        fontSize: '20px', 
+                        fill: '#00ff00'
+                    }).setOrigin(0.5);
+                    
+                    this.tweens.add({
+                        targets: victoryText,
+                        y: victoryText.y - 30,
+                        alpha: 0,
+                        duration: 1000,
+                        onComplete: () => {
+                            victoryText.destroy();
+                        }
+                    });
+                }
+                
+                // 更新怪物血量顯示
+                this.updateSlimeHealthBar();
+            });
+        }
+    }
+
+    // 創建技能UI顯示
+    createSkillUI() {
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        // 技能一圖標與冷卻顯示 - 響應式位置
+        this.skill1Icon = this.add.image(gameWidth * 0.875, gameHeight * 0.75, 'skill1').setScale(0.4).setAlpha(0.5);
+        this.skill1CooldownText = this.add.text(gameWidth * 0.875, gameHeight * 0.75, '', {
+            fontSize: '16px',
+            fill: '#ffffff',
+            stroke: '#000000',
+            strokeThickness: 2
+        }).setOrigin(0.5).setVisible(false);
+        
+        // 技能二圖標與冷卻顯示 - 響應式位置
+        this.skill2Icon = this.add.image(gameWidth * 0.975, gameHeight * 0.75, 'skill2').setScale(0.4).setAlpha(0.5);
+        this.skill2CooldownText = this.add.text(gameWidth * 0.963, gameHeight * 0.75, '', {
+            fontSize: '16px',
+            fill: '#ffffff',
+            stroke: '#000000',
+            strokeThickness: 2
+        }).setOrigin(0.5).setVisible(false);
+        
+        // 技能鍵位提示 - 響應式位置
+        this.add.text(gameWidth * 0.875, gameHeight * 0.808, 'Q', {
+            fontSize: '16px',
+            fill: '#ffffff',
+            backgroundColor: '#000000',
+            padding: { x: 5, y: 2 }
+        }).setOrigin(0.5);
+        
+        this.add.text(gameWidth * 0.963, gameHeight * 0.808, 'W', {
+            fontSize: '16px',
+            fill: '#ffffff',
+            backgroundColor: '#000000',
+            padding: { x: 5, y: 2 }
+        }).setOrigin(0.5);
+        
+        // 更新技能UI狀態
+        this.updateSkillUI();
+    }
+    
+    // 更新技能UI狀態
+    updateSkillUI() {
+        // 技能一狀態
+        if (this.playerLevel >= 5) {
+            // 已解鎖技能一
+            if (!this.hasSkill1) {
+                this.hasSkill1 = true;
+                // 第一次解鎖時顯示通知
+                this.showSkillUnlockMessage(1);
+            }
+            this.skill1Icon.setAlpha(1.0);
+            
+            // 顯示冷卻
+            const now = this.time.now;
+            if (this.lastSkill1Time > 0 && now - this.lastSkill1Time < this.skill1Cooldown) {
+                const remainingCooldown = Math.ceil((this.skill1Cooldown - (now - this.lastSkill1Time)) / 1000);
+                this.skill1CooldownText.setText(remainingCooldown);
+                this.skill1CooldownText.setVisible(true);
+                this.skill1Icon.setAlpha(0.6);
+            } else {
+                this.skill1CooldownText.setVisible(false);
+            }
+        } else {
+            // 未解鎖
+            this.skill1Icon.setAlpha(0.1);
+            this.skill1CooldownText.setText('');
+            this.skill1CooldownText.setVisible(true);
+            this.skill1CooldownText.setText(`5級`);
+        }
+        
+        // 技能二狀態
+        if (this.playerLevel >= 10) {
+            // 已解鎖技能二
+            if (!this.hasSkill2) {
+                this.hasSkill2 = true;
+                // 第一次解鎖時顯示通知
+                this.showSkillUnlockMessage(2);
+            }
+            this.skill2Icon.setAlpha(1.0);
+            
+            // 顯示冷卻
+            const now = this.time.now;
+            if (this.lastSkill2Time > 0 && now - this.lastSkill2Time < this.skill2Cooldown) {
+                const remainingCooldown = Math.ceil((this.skill2Cooldown - (now - this.lastSkill2Time)) / 1000);
+                this.skill2CooldownText.setText(remainingCooldown);
+                this.skill2CooldownText.setVisible(true);
+                this.skill2Icon.setAlpha(0.6);
+            } else {
+                this.skill2CooldownText.setVisible(false);
+            }
+        } else {
+            // 未解鎖
+            this.skill2Icon.setAlpha(0.1);
+            this.skill2CooldownText.setText('');
+            this.skill2CooldownText.setVisible(true);
+            this.skill2CooldownText.setText(`10級`);
+        }
+    }
+    
+    // 顯示技能解鎖訊息
+    showSkillUnlockMessage(skillNumber) {
+        // 獲取實際畫布尺寸
+        const gameWidth = this.sys.game.config.width;
+        const gameHeight = this.sys.game.config.height;
+        
+        const skillName = skillNumber === 1 ? '爆炸衝擊' : '能量彈';
+        const skillKey = skillNumber === 1 ? 'Q' : 'W';
+        
+        // 背景閃光效果
+        this.cameras.main.flash(500, 0, 255, 255);
+        
+        // 解鎖訊息
+        const unlockText = this.add.text(gameWidth/2, gameHeight * 0.42, `解鎖技能：${skillName}！`, {
+            fontSize: '36px',
+            fill: '#00ffff',
+            stroke: '#000000',
+            strokeThickness: 4
+        }).setOrigin(0.5).setDepth(100);
+        
+        // 使用說明
+        const instructionText = this.add.text(gameWidth/2, gameHeight/2, `按下 ${skillKey} 鍵使用技能`, {
+            fontSize: '24px',
+            fill: '#ffffff',
+            stroke: '#000000',
+            strokeThickness: 3
+        }).setOrigin(0.5).setDepth(100);
+        
+        // 添加技能圖示
+        const skillIcon = this.add.image(gameWidth/2, gameHeight * 0.58, `skill${skillNumber}`).setScale(0.6).setDepth(100);
+        
+        // 動畫效果
+        this.tweens.add({
+            targets: [unlockText, instructionText, skillIcon],
+            alpha: 0,
+            y: '-=30',
+            duration: 3000,
+            ease: 'Power2',
+            delay: 2000,
+            onComplete: () => {
+                unlockText.destroy();
+                instructionText.destroy();
+                skillIcon.destroy();
+            }
+        });
+    }
+    
+    // 使用技能一：爆炸衝擊
+    useSkill1() {
+        if (!this.hasSkill1) return; // 未解鎖
+        
+        const now = this.time.now;
+        
+        // 檢查冷卻
+        if (this.lastSkill1Time > 0 && now - this.lastSkill1Time < this.skill1Cooldown) {
+            return; // 冷卻中
+        }
+        
+        // 設置冷卻時間：8秒
+        this.skill1Cooldown = 8000;
+        this.lastSkill1Time = now;
+        
+        // 計算傷害（基礎30，每級+3）
+        const damage = 50 + (this.playerLevel * 15);
+        
+        // 創建爆炸特效
+        const explosion = this.skillEffects.create(this.player.x, this.player.y, 'skill1').setScale(0.1);
+        explosion.damage = damage; // 儲存傷害值
+        
+        // 爆炸動畫
+        this.tweens.add({
+            targets: explosion,
+            scale: 1.0,
+            alpha: { from: 1, to: 0 },
+            duration: 800,
+            ease: 'Power2',
+            onComplete: () => {
+                explosion.destroy();
+            }
+        });
+        
+        // 震動效果
+        this.cameras.main.shake(300, 0.01);
+        
+        // 對範圍內的怪物造成傷害
+        this.damageEnemiesInRadius(this.player.x, this.player.y, 300, damage);
+        
+        // 更新UI
+        this.updateSkillUI();
+    }
+    
+    // 使用技能二：三重能量彈
+    useSkill2() {
+        if (!this.hasSkill2) return; // 未解鎖
+        
+        const now = this.time.now;
+        
+        // 檢查冷卻
+        if (this.lastSkill2Time > 0 && now - this.lastSkill2Time < this.skill2Cooldown) {
+            return; // 冷卻中
+        }
+        
+        // 設置冷卻時間：10秒
+        this.skill2Cooldown = 10000;
+        this.lastSkill2Time = now;
+        
+        // 計算傷害（基礎25，每級+2.5）
+        const damage = 100 + (this.playerLevel * 10);
+        
+        // 發射三顆能量彈
+        const directions = [
+            { x: 0, y: -1 },  // 正上方
+            { x: 0.866, y: 0.5 },  // 右下方 (60度)
+            { x: -0.866, y: 0.5 }  // 左下方 (120度)
+        ];
+        
+        directions.forEach((dir, index) => {
+            // 創建能量彈
+            const energyBall = this.skillEffects.create(this.player.x, this.player.y, 'skill2').setScale(0.3);
+            energyBall.damage = damage; // 儲存傷害值
+            
+            // 設置速度和方向
+            const speed = 300;
+            energyBall.setVelocity(dir.x * speed, dir.y * speed);
+            
+            // 設置旋轉
+            this.tweens.add({
+                targets: energyBall,
+                rotation: 6.28,
+                duration: 1000,
+                repeat: -1
+            });
+            
+            // 發光效果
+            energyBall.setTint(0x00ffff);
+            
+            // 能量彈持續時間（2秒後消失）
+            this.time.delayedCall(2000, () => {
+                if (energyBall && energyBall.active) {
+                    energyBall.destroy();
+                }
+            });
+            
+            // 設置碰撞：與怪物和Boss
+            this.physics.add.overlap(energyBall, this.slimes, (ball, slime) => {
+                // 對怪物造成傷害
+                this.damageEnemy(slime, ball.damage);
+                // 能量彈消失
+                ball.destroy();
+            });
+            
+            // 與Boss的碰撞
+            if (this.boss && this.boss.active) {
+                this.physics.add.overlap(energyBall, this.boss, (ball, boss) => {
+                    // 對Boss造成傷害
+                    this.damageBoss(boss, ball.damage);
+                    // 能量彈消失
+                    ball.destroy();
+                });
+            }
+            
+            // 與牆壁碰撞時消失
+            this.physics.add.collider(energyBall, this.walls, (ball) => {
+                ball.destroy();
+            });
+        });
+        
+        // 更新UI
+        this.updateSkillUI();
+    }
+    
+    // 對指定半徑內的敵人造成傷害
+    damageEnemiesInRadius(x, y, radius, damage) {
+        // 對範圍內的普通怪物造成傷害
+        this.slimes.getChildren().forEach(slime => {
+            if (slime && slime.active && !slime.isDead) {
+                const distance = Phaser.Math.Distance.Between(x, y, slime.x, slime.y);
+                if (distance <= radius) {
+                    this.damageEnemy(slime, damage);
+                }
+            }
+        });
+        
+        // 對Boss造成傷害（如果在範圍內）
+        if (this.boss && this.boss.active) {
+            const distance = Phaser.Math.Distance.Between(x, y, this.boss.x, this.boss.y);
+            if (distance <= radius) {
+                this.damageBoss(this.boss, damage);
+            }
+        }
+    }
+    
+    // 對單個怪物造成傷害
+    damageEnemy(slime, damage) {
+        // 確保怪物存在且有血量
+        if (!slime || !slime.active || typeof slime.slimeHealth === 'undefined' || slime.isDead) {
+            return;
+        }
+        
+        // 造成傷害
+        slime.slimeHealth -= damage;
+        
+        // 顯示傷害文字
+        const damageText = this.add.text(slime.x, slime.y - 30, damage, { 
+            fontSize: '18px', 
+            fill: '#ffff00',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 2
+        }).setOrigin(0.5);
+        
+        this.tweens.add({
+            targets: damageText,
+            y: damageText.y - 50,
+            alpha: 0,
+            duration: 800,
+            onComplete: () => {
+                damageText.destroy();
+            }
+        });
+        
+        // 怪物受傷效果
+        slime.setTint(0xffff00);
+        setTimeout(() => {
+            if (slime && slime.active) {
+                slime.clearTint();
+            }
+        }, 200);
+        
+        // 檢查怪物是否死亡
+        if (slime.slimeHealth <= 0) {
+            // 標記為已死亡
+            slime.isDead = true;
+            
+            // 立即移除血條
+            slime.alpha = 0.9;
+            this.updateSlimeHealthBar();
+            
+            // 根據怪物類型獲得不同經驗值
+            let expGained = 80;
+            if (slime.slimeType === '強壯') {
+                expGained = 120;
+            } else if (slime.slimeType === '快速') {
+                expGained = 80;
+            }
+            
+            // 獲得經驗值
+            this.gainExperience(expGained);
+            
+            // 怪物死亡效果
+            this.tweens.add({
+                targets: slime,
+                alpha: 0,
+                scale: slime.scale * 0.5,
+                duration: 300,
+                onComplete: () => {
+                    slime.destroy();
+                    
+                    // 隨機掉落能量飲料 (15% 幾率)
+                    if (this.random.frac() < 0.15) {
+                        this.energyIcon.setVisible(true);
+                        this.energyPrompt.setVisible(true);
+                        
+                        // 顯示掉落提示
+                        const dropText = this.add.text(slime.x, slime.y, '掉落能量飲料！', { 
+                            fontSize: '16px', 
+                            fill: '#00ffff'
+                        }).setOrigin(0.5);
+                        
+                        this.tweens.add({
+                            targets: dropText,
+                            y: dropText.y - 30,
+                            alpha: 0,
+                            duration: 1500,
+                            onComplete: () => {
+                                dropText.destroy();
+                            }
+                        });
+                    }
+                }
+            });
+            
+            // 顯示擊敗文字
+            const victoryText = this.add.text(slime.x, slime.y - 50, `擊敗${slime.slimeType}怪物！`, { 
+                fontSize: '20px', 
+                fill: '#00ff00'
+            }).setOrigin(0.5);
+            
+            this.tweens.add({
+                targets: victoryText,
+                y: victoryText.y - 30,
+                alpha: 0,
+                duration: 1000,
+                onComplete: () => {
+                    victoryText.destroy();
+                }
+            });
+        }
+        
+        // 更新怪物血量顯示
+        this.updateSlimeHealthBar();
+    }
+    
+    // 對Boss造成傷害
+    damageBoss(boss, damage) {
+        if (!boss || !boss.active || this.bossDefeated) {
+            return;
+        }
+        
+        // 造成傷害
+        boss.bossHealth -= damage;
+        
+        // 顯示傷害文字
+        const damageText = this.add.text(boss.x, boss.y - 30, damage, { 
+            fontSize: '24px', 
+            fill: '#ffff00',
+            fontStyle: 'bold',
+            stroke: '#000000',
+            strokeThickness: 2
+        }).setOrigin(0.5);
+        
+        this.tweens.add({
+            targets: damageText,
+            y: damageText.y - 50,
+            alpha: 0,
+            duration: 800,
+            onComplete: () => {
+                damageText.destroy();
+            }
+        });
+        
+        // Boss受傷效果
+        boss.setTint(0xffff00);
+        setTimeout(() => {
+            if (boss && boss.active) {
+                boss.clearTint();
+            }
+        }, 200);
+        
+        // 檢查Boss是否死亡
+        if (boss.bossHealth <= 0) {
+            this.defeatBoss();
+        }
+        
+        // 更新Boss血條
+        this.updateBossHealthBar();
+    }
+
+    // 使用能量飲料
+    useEnergyDrink() {
+        if (!this.energyIcon.visible || this.isGameOver) return;
+        
+        this.playerHealth += 20;
+        if (this.playerHealth > 100) this.playerHealth = 100;
+        this.updateHealthBar();
+        
+        // 顯示回復效果
+        const healText = this.add.text(this.player.x, this.player.y - 40, '+20 生命', {
+            fontSize: '20px',
+            fill: '#00ff00',
+            stroke: '#000000',
+            strokeThickness: 2
+        }).setOrigin(0.5);
+        
+        this.tweens.add({
+            targets: healText,
+            y: healText.y - 30,
+            alpha: 0,
+            duration: 1000,
+            onComplete: () => {
+                healText.destroy();
+            }
+        });
+        
+        this.energyIcon.setVisible(false);
+        this.energyPrompt.setVisible(false);
+    }
+}
+
+// --- 遊戲設定，啟動大廳場景 ---
+const config = {
+    type: Phaser.AUTO,
+    width: window.innerWidth,  // 使用視窗寬度
+    height: window.innerHeight, // 使用視窗高度
+    pixelArt: true,
+    physics: {
+        default: 'arcade',
+        arcade: { debug: false }
+    },
+    scene: [LobbyScene, GameScene], // 多場景，預設啟動 LobbyScene
+    scale: {
+        mode: Phaser.Scale.RESIZE, // 允許調整大小
+        autoCenter: Phaser.Scale.CENTER_BOTH // 居中顯示
+    }
+};
+
+// 添加視窗大小變化監聽器
+window.addEventListener('resize', () => {
+    game.scale.resize(window.innerWidth, window.innerHeight);
+});
+
+// 添加全局錯誤處理
+window.onerror = function(message, source, lineno, colno, error) {
+    console.error('遊戲運行錯誤:', message, '在行:', lineno, '列:', colno);
+    console.error('詳細錯誤:', error);
+    alert('遊戲發生錯誤，請查看控制台獲取詳情');
+    return true;
+};
+
+const game = new Phaser.Game(config);
+</script>
+</body>
+</html>
